@@ -1,20 +1,35 @@
-# Privacy Policy for Todoist Custom Sidebar
-Last Updated: December 13, 2025
+# Todoist Custom Sidebar
 
-1. Overview Todoist Custom Sidebar ("the Extension") is a productivity tool designed to help you manage your Todoist tasks directly from a browser sidebar. We respect your privacy and are committed to protecting your data. This policy explains how we handle your information.
+<img src="sidebar2.png" width="80" align="right" alt="Extension icon">
 
-2. Data Collection and Usage The Extension communicates directly between your web browser and the Todoist API. The developer of this Extension does not collect, store, or have access to your personal data, tasks, or API tokens.
+A Chrome extension (Manifest V3) that puts your [Todoist](https://todoist.com) tasks in a slide-out sidebar on any webpage — view, add, complete, and edit tasks without leaving the page you're on.
 
-API Tokens: To function, the Extension requires your Todoist API Token. This token is stored locally on your device using Chrome's secure storage API (chrome.storage.local). It is never transmitted to the Extension developer or any third-party servers other than the official Todoist API.
+## Features
 
-Task Data: The Extension fetches your tasks, projects, and labels directly from https://api.todoist.com. This data is displayed in your browser and is not collected or analyzed by the Extension developer.
+- **Views**: 📥 Inbox, 📅 Today (including overdue), all tasks, or any single project
+- **Quick add** with Todoist syntax — `#project`, `@label`, and natural-language dates like `tomorrow`, highlighted as you type
+- **Add current page** — one click captures the tab's title and URL as a task
+- **Group by label**, with collapsible groups and a focus mode (click a group header)
+- **Inline actions** — complete with the checkbox, cycle priority with the colored dot, click a task to edit everything else
+- **Label manager** — rename and recolor your Todoist labels
+- Light/dark theme follows your system setting
 
-Page Content: The "Add current page" feature accesses the title and URL of your active browser tab only when you explicitly click the button. This information is used solely to pre-fill the task creation field.
+## Install
 
-3. Third-Party Services The Extension integrates with the Todoist service (provided by Doist Inc.). Your use of Todoist is subject to Doist's own Terms of Service and Privacy Policy. The Extension acts solely as a client interface for your Todoist account.
+1. Download or clone this repository
+2. Open `chrome://extensions` in Chrome
+3. Enable **Developer mode** (top right)
+4. Click **Load unpacked** and select this folder
 
-4. Data Security Your API token is stored locally within your browser sandbox. We follow Chrome Extension best practices, including utilizing Manifest V3 security enhancements, to ensure your data remains secure on your device.
+## Setup
 
-5. Changes to this Policy We may update this Privacy Policy from time to time. If we make significant changes, we will notify users through the Extension's update notes or Chrome Web Store listing.
+1. Click the extension's toolbar icon on any regular webpage — the sidebar slides open
+   (it can't run on browser pages like `chrome://…` or the Chrome Web Store; the icon shows a `!` badge if you try)
+2. Grab your personal API token from Todoist: **Settings → Integrations → Developer**, or go straight to [your token page](https://app.todoist.com/app/settings/integrations/developer)
+3. Paste it into the sidebar and hit **Connect**
 
-6. Contact If you have questions about this Privacy Policy, please contact the developer via the support link on the Chrome Web Store listing.
+To switch accounts later, click the key icon in the sidebar header.
+
+## Privacy
+
+Your API token is stored locally in your browser (`chrome.storage.local`) and is only ever sent to `api.todoist.com`. No data is collected by the developer. Full details in [PRIVACY.md](PRIVACY.md).

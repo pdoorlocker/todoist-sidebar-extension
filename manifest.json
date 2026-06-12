@@ -9,7 +9,7 @@
       "48": "sidebar2.png",
       "128": "sidebar2.png"
     },
-  "version": "2.5",
+  "version": "2.6",
   "description": "Native sidebar using Todoist API.",
   "permissions": [
     "activeTab",

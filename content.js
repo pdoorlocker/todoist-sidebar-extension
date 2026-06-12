@@ -97,14 +97,13 @@
             const groupSelect = shadow.getElementById('todo-group-select');
             if (groupSelect) groupSelect.value = currentGrouping;
 
-            // ANIMATION FIX: If open, apply class immediately.
+            // A fresh injection only ever happens from a toolbar click, so the
+            // user's intent is "open" — never restore a closed sidebar here.
             // The 'no-transition' class is already on sidebar to prevent sliding.
-            if (state.isOpen) {
-                sidebar.classList.add('open');
-                toggleBtn.classList.add('hidden');
-                document.documentElement.style.transition = 'none'; // Prevent body shift animation
-                document.documentElement.style.marginRight = WIDTH;
-            }
+            sidebar.classList.add('open');
+            toggleBtn.classList.add('hidden');
+            document.documentElement.style.transition = 'none'; // Prevent body shift animation
+            document.documentElement.style.marginRight = WIDTH;
 
             // Remove the block after a short delay to allow future animations
             setTimeout(() => {
@@ -122,7 +121,15 @@
     }
 
     // --- API HELPER ---
-    async function callBackgroundApi(token, method, endpoint, body = null) {
+    function handleInvalidToken() {
+        chrome.storage.local.remove('todoist_token', () => {
+            renderAuthView({ message: 'Todoist rejected the saved API token. Please paste a new one.' });
+        });
+    }
+
+    // Full variant exposes success/status; pass ignoreAuthError when probing a
+    // candidate token so a typo doesn't wipe a (possibly valid) stored one.
+    async function callBackgroundApiFull(token, method, endpoint, body = null, opts = {}) {
         const path = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
         const isSync = path.includes('sync/v9');
         const baseUrl = isSync ? 'https://api.todoist.com' : 'https://api.todoist.com/rest/v2';
@@ -133,14 +140,24 @@
                 action: 'TODOIST_API_CALL',
                 data: { method, url, body, token }
             }, (response) => {
-                if (response && response.success) {
-                    resolve(response.data);
-                } else {
-                    console.error("API Error:", response?.error);
-                    resolve(null);
+                if (response && !response.success) {
+                    console.error("API Error:", response.error);
+                    if (response.status === 401 && !opts.ignoreAuthError) handleInvalidToken();
                 }
+                resolve(response || { success: false, error: 'No response from background script' });
             });
         });
+    }
+
+    async function callBackgroundApi(token, method, endpoint, body = null) {
+        const response = await callBackgroundApiFull(token, method, endpoint, body);
+        return response.success ? response.data : null;
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // --- UI COMPONENTS ---
@@ -168,6 +185,9 @@
                     <div class="todo-header-actions">
                         <button id="todo-add-page" class="todo-icon-btn" title="Add current page">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                        </button>
+                        <button id="todo-account" class="todo-icon-btn" title="Change API token">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
                         </button>
                         <button id="todo-manage-labels" class="todo-icon-btn" title="Manage Labels">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -217,6 +237,12 @@
         div.querySelector('#todo-reload').addEventListener('click', () => checkAuthAndLoad());
         div.querySelector('#todo-close').addEventListener('click', () => toggleSidebar());
         
+        div.querySelector('#todo-account').addEventListener('click', () => {
+            chrome.storage.local.get(['todoist_token'], (res) => {
+                renderAuthView(res.todoist_token ? { allowCancel: true } : {});
+            });
+        });
+
         div.querySelector('#todo-manage-labels').addEventListener('click', () => {
             chrome.storage.local.get(['todoist_token'], (res) => {
                 if (res.todoist_token) openLabelManager(res.todoist_token);
@@ -302,27 +328,56 @@
         renderTaskView(token);
     }
 
-    function renderAuthView() {
+    function renderAuthView(opts = {}) {
         const listContainer = shadow.getElementById('todo-list');
         if(!listContainer) return;
         listContainer.innerHTML = `
             <div class="auth-container">
                 <h3>Connect Todoist</h3>
-                <p style="font-size:13px; color:#666; margin-bottom:15px;">Paste your API Token from Todoist Settings > Integrations.</p>
-                <input type="text" id="api-token-input" class="auth-input" placeholder="Paste API Token here...">
+                <p class="auth-help">Paste your personal API token below. In Todoist it lives under <b>Settings &gt; Integrations &gt; Developer</b>.</p>
+                <a class="auth-link" href="https://app.todoist.com/app/settings/integrations/developer" target="_blank" rel="noopener">Open your Todoist token page &#8599;</a>
+                <div id="auth-error" class="auth-error ${opts.message ? '' : 'hidden'}">${opts.message ? escapeHtml(opts.message) : ''}</div>
+                <input type="password" id="api-token-input" class="auth-input" placeholder="Paste API token here...">
                 <button id="save-token-btn" class="save-btn">Connect</button>
+                ${opts.allowCancel ? '<button id="auth-cancel-btn" class="auth-cancel">&larr; Back to tasks</button>' : ''}
             </div>
         `;
         const saveBtn = shadow.getElementById('save-token-btn');
-        if(saveBtn) {
-            saveBtn.addEventListener('click', () => {
-                const input = shadow.getElementById('api-token-input');
-                const token = input.value.trim();
-                if (token) {
-                    chrome.storage.local.set({todoist_token: token}, () => { checkAuthAndLoad(); });
-                }
-            });
+        const input = shadow.getElementById('api-token-input');
+        const errorBox = shadow.getElementById('auth-error');
+
+        const showError = (msg) => {
+            errorBox.textContent = msg;
+            errorBox.classList.remove('hidden');
+        };
+
+        // Validate the token against the API before saving, so a typo can't
+        // strand the user on a broken task list.
+        const connect = async () => {
+            const token = input.value.trim();
+            if (!token) { showError('Paste your API token first.'); return; }
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Connecting…';
+            const res = await callBackgroundApiFull(token, 'GET', 'projects', null, { ignoreAuthError: true });
+            if (res.success) {
+                chrome.storage.local.set({todoist_token: token}, () => { checkAuthAndLoad(); });
+            } else {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Connect';
+                showError(res.status === 401
+                    ? "Todoist didn't accept that token. Double-check it and try again."
+                    : 'Could not reach Todoist. Check your internet connection and try again.');
+            }
+        };
+
+        saveBtn.addEventListener('click', connect);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); connect(); }
+        });
+        if (opts.allowCancel) {
+            shadow.getElementById('auth-cancel-btn').addEventListener('click', () => checkAuthAndLoad());
         }
+        input.focus();
     }
 
     function triggerRender() {
@@ -341,7 +396,7 @@
         
         try {
             let endpoint = 'tasks';
-            if (currentView === 'today') endpoint += '?filter=today';
+            if (currentView === 'today') endpoint += `?filter=${encodeURIComponent('today | overdue')}`;
             else if (currentView === 'inbox') endpoint += '?filter=%23Inbox';
             else if (currentView === 'all') endpoint += ''; 
             else endpoint += `?project_id=${currentView}`;
@@ -392,7 +447,7 @@
                     listHtml += `
                         <div class="todo-group-header focused" data-group-id="${currentLabelFilter}" style="color:${hexColor}; border-color:${hexColor}40; background:${hexColor}10">
                             <span class="group-color-dot" style="background:${hexColor}"></span>
-                            ${lObj.name} (Focused)
+                            ${escapeHtml(lObj.name)} (Focused)
                             <span class="group-count">×</span>
                         </div>
                     `;
@@ -413,7 +468,7 @@
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </span>
                                 <span class="group-color-dot" style="background:${hexColor}"></span>
-                                ${name}
+                                ${escapeHtml(name)}
                                 <span class="group-count">${tasks.length}</span>
                             </div>
                             
@@ -452,7 +507,9 @@
         const pMap = {4: 'p1', 3: 'p2', 2: 'p3', 1: 'p4'};
         const pClass = pMap[task.priority] || 'p4';
         
-        let content = task.content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+        // Escape first so task content can't inject HTML into the host page,
+        // then convert markdown links on the escaped text.
+        let content = escapeHtml(task.content).replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
         
         let tagsHtml = '';
         if (task.labels && task.labels.length > 0) {
@@ -461,7 +518,7 @@
                 const lObj = allLabels.find(l => String(l.id) === String(id) || l.name.toLowerCase() === nameId);
                 if (!lObj) return ''; 
                 const hex = TODOIST_COLORS[lObj.color] || '#808080';
-                return `<span class="todo-tag" style="--tag-color:${hex}">${lObj.name}</span>`;
+                return `<span class="todo-tag" style="--tag-color:${hex}">${escapeHtml(lObj.name)}</span>`;
             }).join('');
             if (labelSpans) tagsHtml = `<div class="todo-tags">${labelSpans}</div>`;
         }
@@ -472,7 +529,7 @@
             projectHtml = `
                 <span class="meta-item" title="Project">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:2px; opacity:0.7"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></svg>
-                    ${project.name}
+                    ${escapeHtml(project.name)}
                 </span>
             `;
         }
@@ -485,7 +542,7 @@
             dueHtml = `
                 <span class="meta-item ${dueClass}" title="Due Date">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:2px; opacity:0.7"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                    ${dueText}
+                    ${escapeHtml(dueText)}
                 </span>
             `;
         }
@@ -528,10 +585,10 @@
 
             return `
                 <div class="label-manager-row" data-id="${l.id}">
-                    <select class="label-color-select" style="background:${hex}; color:${hex}" onchange="this.style.background = this.options[this.selectedIndex].style.background; this.style.color = this.style.background;">
+                    <select class="label-color-select" style="background:${hex}; color:${hex}">
                         ${colorOptions}
                     </select>
-                    <input type="text" value="${l.name}" onblur="this.dataset.dirty = true">
+                    <input type="text" value="${escapeHtml(l.name)}">
                 </div>
             `;
         }).join('');
@@ -554,6 +611,17 @@
         `;
 
         shadow.appendChild(overlay);
+
+        // Inline on* attributes are blocked by strict page CSPs, so the color
+        // preview is bound here instead.
+        overlay.querySelectorAll('.label-color-select').forEach(sel => {
+            sel.addEventListener('change', () => {
+                const chosen = sel.options[sel.selectedIndex];
+                sel.style.background = chosen.style.background;
+                sel.style.color = chosen.style.background;
+            });
+        });
+
         const close = () => overlay.remove();
         const save = async () => {
             const rows = overlay.querySelectorAll('.label-manager-row');
@@ -583,8 +651,8 @@
         overlay.className = 'todo-modal-overlay';
         overlay.style.pointerEvents = 'auto';
         
-        const projectOptions = allProjects.map(p => 
-            `<option value="${p.id}" ${task.project_id === p.id ? 'selected' : ''}># ${p.name}</option>`
+        const projectOptions = allProjects.map(p =>
+            `<option value="${p.id}" ${task.project_id === p.id ? 'selected' : ''}># ${escapeHtml(p.name)}</option>`
         ).join('');
 
         const labelsHtml = allLabels.map(l => {
@@ -594,7 +662,7 @@
             <label class="todo-label-chip ${isChecked ? 'selected' : ''}" style="--chip-color:${hex}">
                 <input type="checkbox" value="${l.id}" ${isChecked ? 'checked' : ''} style="display:none">
                 <span class="chip-circle"></span>
-                ${l.name}
+                ${escapeHtml(l.name)}
             </label>`;
         }).join('');
 
@@ -602,10 +670,10 @@
             <div class="todo-modal">
                 <div class="todo-modal-header">Edit Task <button id="modal-close-btn" style="background:none;border:none;cursor:pointer;font-size:18px;">&times;</button></div>
                 <div class="todo-modal-body">
-                    <div class="todo-form-group"><label class="todo-form-label">Content</label><div id="modal-content" class="todo-input-editable" contenteditable="true">${task.content.replace(/</g, '&lt;')}</div></div>
-                    <div class="todo-form-group"><label class="todo-form-label">Description</label><textarea id="modal-desc" class="todo-form-textarea">${task.description || ''}</textarea></div>
+                    <div class="todo-form-group"><label class="todo-form-label">Content</label><div id="modal-content" class="todo-input-editable" contenteditable="true">${escapeHtml(task.content)}</div></div>
+                    <div class="todo-form-group"><label class="todo-form-label">Description</label><textarea id="modal-desc" class="todo-form-textarea">${escapeHtml(task.description || '')}</textarea></div>
                     <div class="todo-form-group"><label class="todo-form-label">Project</label><select id="modal-project" class="todo-form-select">${projectOptions}</select></div>
-                    <div class="todo-form-group"><label class="todo-form-label">Due Date</label><input type="text" id="modal-due" class="todo-form-input" value="${task.due ? task.due.string : ''}"></div>
+                    <div class="todo-form-group"><label class="todo-form-label">Due Date</label><input type="text" id="modal-due" class="todo-form-input" value="${escapeHtml(task.due ? task.due.string : '')}"></div>
                     <div class="todo-form-group"><label class="todo-form-label">Priority</label>
                         <select id="modal-priority" class="todo-form-select">
                             <option value="1" ${task.priority === 1 ? 'selected' : ''}>P4</option>
@@ -804,9 +872,15 @@
         item.style.opacity = '0.5';
         item.style.textDecoration = 'line-through';
         chrome.storage.local.get(['todoist_token'], async (res) => {
-            if (res.todoist_token) {
-                await callBackgroundApi(res.todoist_token, 'POST', `tasks/${taskId}/close`);
+            if (!res.todoist_token) return;
+            const result = await callBackgroundApiFull(res.todoist_token, 'POST', `tasks/${taskId}/close`);
+            if (result.success) {
                 setTimeout(() => item.remove(), 500);
+            } else {
+                // Don't pretend it completed — restore the row.
+                item.style.opacity = '';
+                item.style.textDecoration = '';
+                checkbox.checked = false;
             }
         });
     }
@@ -821,8 +895,12 @@
         btn.classList.add(pMap[newP]);
         item.setAttribute('data-priority', newP);
         chrome.storage.local.get(['todoist_token'], async (res) => {
-            if (res.todoist_token) {
-                await callBackgroundApi(res.todoist_token, 'POST', `tasks/${taskId}`, { priority: newP });
+            if (!res.todoist_token) return;
+            const result = await callBackgroundApiFull(res.todoist_token, 'POST', `tasks/${taskId}`, { priority: newP });
+            if (!result.success) {
+                btn.classList.remove('p1', 'p2', 'p3', 'p4');
+                btn.classList.add(pMap[currentP]);
+                item.setAttribute('data-priority', currentP);
             }
         });
     }
@@ -868,7 +946,8 @@
 
     async function processQuickAddEntities(token, text) {
         const cleanText = text.replace(/<[^>]*>/g, '');
-        const projectRegex = /(?:^|\s)#(\w+)/g;
+        // Require at least one letter so "fix #1 bug" doesn't create project "1".
+        const projectRegex = /(?:^|\s)#((?=\w*[A-Za-z_])\w+)/g;
         let pMatch;
         while ((pMatch = projectRegex.exec(cleanText)) !== null) {
             const name = pMatch[1];
@@ -877,7 +956,7 @@
                  if(newP) allProjects.push(newP);
             }
         }
-        const labelRegex = /(?:^|\s)@(\w+)/g;
+        const labelRegex = /(?:^|\s)@((?=\w*[A-Za-z_])\w+)/g;
         let lMatch;
         while ((lMatch = labelRegex.exec(cleanText)) !== null) {
             const name = lMatch[1];
@@ -915,16 +994,21 @@
         attachSyntaxHighlighter(input);
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
-                e.preventDefault(); 
+                e.preventDefault();
                 const text = input.innerText.trim();
                 if (text) {
-                    input.innerText = '';
-                    ['cue-date','cue-project','cue-label'].forEach(id => {
-                       const el = shadow.getElementById(id);
-                       if(el) el.className = 'cue-item';
-                    });
                     chrome.storage.local.get(['todoist_token'], (res) => {
-                        if (res.todoist_token) performQuickAdd(res.todoist_token, text);
+                        if (res.todoist_token) {
+                            input.innerText = '';
+                            ['cue-date','cue-project','cue-label'].forEach(id => {
+                               const el = shadow.getElementById(id);
+                               if(el) el.className = 'cue-item';
+                            });
+                            performQuickAdd(res.todoist_token, text);
+                        } else {
+                            // Keep the typed text and explain why nothing happened.
+                            renderAuthView({ message: 'Connect your Todoist account first, then press Enter again to add the task.' });
+                        }
                     });
                 }
             }
@@ -955,10 +1039,10 @@
             const text = inputElement.innerText;
             let html = text
                 .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                .replace(/(?:^|\s)(#\w+)/g, (match) => {
+                .replace(/(?:^|\s)(#(?=\w*[A-Za-z_])\w+)/g, (match) => {
                     return `${match.charAt(0) === ' ' ? ' ' : ''}<span class="input-badge project ${allProjects.some(p => p.name.toLowerCase() === match.trim().replace('#','').toLowerCase()) ? '' : 'new'}">${match.trim()}</span>`;
                 })
-                .replace(/(?:^|\s)(@\w+)/g, (match) => {
+                .replace(/(?:^|\s)(@(?=\w*[A-Za-z_])\w+)/g, (match) => {
                     return `${match.charAt(0) === ' ' ? ' ' : ''}<span class="input-badge label ${allLabels.some(l => l.name.toLowerCase() === match.trim().replace('@','').toLowerCase()) ? '' : 'new'}">${match.trim()}</span>`;
                 })
                 .replace(/(?:^|\s)(today|tomorrow|mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\sweek|next\smonth)(?:\s|$)/gi, (match) => {
